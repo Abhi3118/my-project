@@ -5,6 +5,11 @@ from collections import Counter
 from datetime import datetime
 import getpass
 import json
+import sys
+
+print("=" * 60)
+print("Python Executable:", sys.executable)
+print("=" * 60)
 
 # ════════════════════════════════════════════════════════════════════════════
 # CONFIG  ← edit these to match your project
@@ -16,9 +21,9 @@ TIME_SPENT      = "4 hours"
 REVIEW_VERSION  = "0.1"
 REVIEW_DATE     = datetime.today()
 
-# Output path
-OUTPUT_DIR  = "."  # Current directory
-OUTPUT_FILE = f"{PROJECT_NAME}_Code_Review_Log.json"
+# Output JSON path
+JSON_OUTPUT_DIR  = "."
+JSON_OUTPUT_FILE = f"{PROJECT_NAME}_Code_Review_Log.json"
 
 folders_to_check = [
     os.path.join(PROJECT_NAME, "proxyservices"),
@@ -29,7 +34,6 @@ folders_to_check = [
 # ════════════════════════════════════════════════════════════════════════════
 # ISSUE COLLECTOR
 # ════════════════════════════════════════════════════════════════════════════
-
 _findings: list[dict] = []
 
 def _add(location: str, description: str,
@@ -51,7 +55,7 @@ def _add(location: str, description: str,
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# CHECK FUNCTIONS  (each logs to console AND calls _add for JSON export)
+# CHECK FUNCTIONS  (each logs to console AND calls _add for JSON)
 # ════════════════════════════════════════════════════════════════════════════
 
 def check_description_tag(file_path):
@@ -378,8 +382,14 @@ def find_pipeline_pair_description_mismatch(folder):
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# JSON REPORT BUILDER (works in Pyodide)
+# JSON REPORT BUILDER (NO EXCEL - WORKS IN PYODIDE!)
 # ════════════════════════════════════════════════════════════════════════════
+
+DEFECT_TYPES = [
+    "Assignment", "Comments", "Data",
+    "Exception/Error Handling", "Formatting",
+    "Functional/Design Non-Conformance", "Logical",
+]
 
 def _count(severity=None, defect_type=None):
     return sum(
@@ -388,50 +398,41 @@ def _count(severity=None, defect_type=None):
         and (defect_type is None or f["defect_type"] == defect_type)
     )
 
-DEFECT_TYPES = [
-    "Assignment", "Comments", "Data",
-    "Exception/Error Handling", "Formatting",
-    "Functional/Design Non-Conformance", "Logical",
-]
-
 def build_json_report():
-    """Build and save JSON report (works in all environments)"""
+    """Build and save JSON report (works in Pyodide!)"""
     
-    # Build summary
+    # Summary section
     summary = {
         "project_name": PROJECT_NAME,
         "work_product_type": "Code",
         "work_product_name": PROJECT_NAME,
-        "review_metadata": {
-            "version_no": REVIEW_VERSION,
-            "date": REVIEW_DATE.isoformat(),
-            "review_focus": REVIEW_FOCUS,
-            "time_spent": TIME_SPENT,
-            "reviewed_by": REVIEWER_NAME,
-            "review_result": "To Re-review after rework" if _findings else "Accepted",
-        },
+        "review_version": REVIEW_VERSION,
+        "review_date": REVIEW_DATE.isoformat(),
+        "review_focus": REVIEW_FOCUS,
+        "time_spent": TIME_SPENT,
+        "reviewed_by": REVIEWER_NAME,
+        "review_result": "To Re-review after rework" if _findings else "Accepted",
         "defect_count": {
-            "severity": {
-                "Major": _count(severity="Major"),
-                "Medium": _count(severity="Medium"),
-                "Minor": _count(severity="Minor"),
-            },
-            "by_type": {dt: _count(defect_type=dt) for dt in DEFECT_TYPES}
+            "major": _count("Major"),
+            "medium": _count("Medium"),
+            "minor": _count("Minor"),
+            "total": len(_findings)
+        },
+        "defect_type_count": {
+            dt: _count(defect_type=dt) for dt in DEFECT_TYPES
         }
     }
-    
-    # Build analysis
-    analysis = {
-        "defect_types": {}
-    }
+
+    # Analysis section
+    analysis = {}
     for dt in DEFECT_TYPES:
-        analysis["defect_types"][dt] = {
-            "Major": _count("Major", dt),
-            "Medium": _count("Medium", dt),
-            "Minor": _count("Minor", dt),
-            "Total": _count(defect_type=dt)
+        analysis[dt] = {
+            "major": _count("Major", dt),
+            "medium": _count("Medium", dt),
+            "minor": _count("Minor", dt),
+            "total": _count(defect_type=dt)
         }
-    
+
     # Build complete report
     report = {
         "summary": summary,
@@ -439,22 +440,27 @@ def build_json_report():
         "analysis": analysis,
         "guidelines": {
             "Assignment": "Assigning invalid data/object.",
-            "Comments": "Comments not written per language standards; inaccurate or out of sync with functionality.",
-            "Data": "Improper declaration, initialization, or description of data; incorrect data usage or type conversion.",
-            "Exception/Error Handling": "Missing, wrong, or inadequate handling of errors and exceptions.",
-            "Formatting": "Code not formatted per prescribed standards; readability and neatness also considered.",
-            "Functional/Design Non-Conformance": "Code does not conform to requirements specification document.",
-            "Logical": "Incorrect logic or procedure used: wrong math, incorrect comparison, wrong algorithm.",
+            "Comments": "Comments not written per standards, inaccurate, or grammatically incorrect.",
+            "Data": "Improper declaration, initialization, or description of data.",
+            "Exception/Error Handling": "Missing, wrong, or inadequate error/exception handling.",
+            "Formatting": "Code not formatted per prescribed standards.",
+            "Functional/Design Non-Conformance": "Code doesn't conform to requirements specification.",
+            "Logical": "Incorrect logic, wrong math, incorrect comparison, or wrong algorithm."
         }
     }
+
+    # Save to JSON
+    out_dir = JSON_OUTPUT_DIR
+    if not os.path.exists(out_dir):
+        out_dir = os.path.dirname(os.path.abspath(__file__))
+
+    out_path = os.path.join(out_dir, JSON_OUTPUT_FILE)
     
-    # Save report
-    out_path = os.path.join(OUTPUT_DIR, OUTPUT_FILE)
-    with open(out_path, "w") as f:
-        json.dump(report, f, indent=2)
-    
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(report, f, indent=2, default=str)
+
     print(f"\n{'='*60}")
-    print(f"📊 JSON report generated:")
+    print(f"📊 JSON Report Generated:")
     print(f"   {out_path}")
     print(f"   Findings written: {len(_findings)}")
     print(f"   Major: {_count('Major')}  Medium: {_count('Medium')}  Minor: {_count('Minor')}")
@@ -482,6 +488,7 @@ def run_script():
             for filename in sorted(files):
                 file_path = os.path.join(root_dir, filename)
 
+                # ── .bix / .proxy ────────────────────────────
                 if filename.endswith(".bix"):
                     bix_files_all.append(filename)
 
@@ -490,6 +497,7 @@ def run_script():
                     print(f"  — PART 1:  Description Tag")
                     check_description_tag(file_path)
 
+                # ── .pipeline ────────────────────────────────
                 if filename.endswith(".pipeline"):
                     print(f"\n📄 {file_path}")
                     bix_snap = list(bix_files_all)
@@ -521,6 +529,7 @@ def run_script():
                     print(f"  — PART 13: Stage Descriptions")
                     find_stage_missing_descriptions(file_path)
 
+    # Project-wide checks
     find_duplicate_bix(bix_files_all)
     for folder in folders_to_check:
         if os.path.exists(folder):
@@ -559,7 +568,5 @@ if __name__ == "__main__":
     run_script()
     run_script2()
 
-    # ── Generate the JSON report (works in Pyodide) ──
+    # ── Auto-generate the JSON report (works in Pyodide!) ──────────────────
     build_json_report()
-    
-    print("\n✅ Analysis complete!")
