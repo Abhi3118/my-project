@@ -21,8 +21,8 @@ TIME_SPENT      = "4 hours"
 REVIEW_VERSION  = "0.1"
 REVIEW_DATE     = datetime.today()
 
-# Output JSON path
-JSON_OUTPUT_DIR  = "."
+# Output JSON path - UPDATED TO YOUR PATH
+JSON_OUTPUT_DIR  = r"C:\My work\Code_Review"
 JSON_OUTPUT_FILE = f"{PROJECT_NAME}_Code_Review_Log.json"
 
 folders_to_check = [
@@ -452,7 +452,15 @@ def build_json_report():
     # Save to JSON
     out_dir = JSON_OUTPUT_DIR
     if not os.path.exists(out_dir):
-        out_dir = os.path.dirname(os.path.abspath(__file__))
+        print(f"⚠️  Output directory doesn't exist: {out_dir}")
+        print(f"   Creating it now...")
+        try:
+            os.makedirs(out_dir, exist_ok=True)
+            print(f"   ✅ Directory created!")
+        except Exception as e:
+            print(f"   ❌ Could not create directory: {e}")
+            print(f"   Falling back to current directory")
+            out_dir = os.path.dirname(os.path.abspath(__file__))
 
     out_path = os.path.join(out_dir, JSON_OUTPUT_FILE)
     
